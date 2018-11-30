@@ -1,6 +1,10 @@
 package dbmodel
 
-import "my_github/ast2template/codegen"
+import (
+	"go/parser"
+	"golang.org/x/tools/go/loader"
+	"my_github/ast2template/codegen"
+)
 
 type Config struct {
 	StructName string
@@ -10,10 +14,34 @@ type Config struct {
 
 type DBFuncGenerator struct {
 	Config
+	pkgImportPath string
+	program       *loader.Program
+}
+
+func (g *DBFuncGenerator) Defaults() {
+	if g.TableName == "" {
+		g.TableName = codegen.ToLowerSnakeCase(g.StructName)
+	}
 }
 
 func (g *DBFuncGenerator) Load(cwd string) {
+	ldr := loader.Config{
+		AllowErrors: true,
+		ParserMode:  parser.ParseComments,
+	}
 
+	pkgImportPath := codegen.GetPackageImportPath(cwd)
+	ldr.Import(pkgImportPath)
+
+	p, err := ldr.Load()
+	if err != nil {
+		panic(err)
+	}
+
+	g.pkgImportPath = pkgImportPath
+	g.program = p
+
+	g.Defaults()
 }
 
 func (g *DBFuncGenerator) Process() {
