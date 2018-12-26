@@ -1,12 +1,12 @@
 package dbmodel
 
 import (
+	"ast2template/codegen"
+	"ast2template/codegen/processrx"
 	"fmt"
 	"go/parser"
 	"go/types"
 	"golang.org/x/tools/go/loader"
-	"my_github/ast2template/codegen"
-	"my_github/ast2template/codegen/processrx"
 )
 
 type Config struct {
@@ -47,7 +47,7 @@ func (g *DBFuncGenerator) Load(cwd string) {
 	g.Defaults()
 }
 
-func (g *DBFuncGenerator) Process( /*ignoreTable bool*/ ) {
+func (g *DBFuncGenerator) Process() {
 	for pkg, pkgInfo := range g.program.AllPackages {
 		if pkg.Path() != g.pkgImportPath {
 			continue
@@ -87,8 +87,6 @@ func (g *DBFuncGenerator) Process( /*ignoreTable bool*/ ) {
 						for _, v := range g.model.Fields {
 							fmt.Printf("Field:	%+v\n", v)
 						}
-
-						g.model.Output(pkgInfo.Pkg.Name(), false)
 					}
 				}
 			}
@@ -96,6 +94,6 @@ func (g *DBFuncGenerator) Process( /*ignoreTable bool*/ ) {
 	}
 }
 
-func (g *DBFuncGenerator) Output(cwd string) codegen.Outputs {
-	return make(codegen.Outputs)
+func (g *DBFuncGenerator) Output() {
+	g.model.Output(false)
 }

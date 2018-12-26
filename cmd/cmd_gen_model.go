@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"ast2template/codegen"
+	"ast2template/event/dbmodel"
 	"github.com/spf13/cobra"
-	"my_github/ast2template/codegen"
-	"my_github/ast2template/event/dbmodel"
 )
 
 var (

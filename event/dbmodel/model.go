@@ -1,12 +1,12 @@
 package dbmodel
 
 import (
+	"ast2template/codegen"
+	"ast2template/codegen/processrx"
 	"fmt"
 	"go/build"
 	"go/types"
 	"golang.org/x/tools/imports"
-	"my_github/ast2template/codegen"
-	"my_github/ast2template/codegen/processrx"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -186,8 +186,8 @@ func (model *Model) collectInfoFromStructType(typeStruct *types.Struct) {
 	}
 }
 
-func (model *Model) Output(pkgName string, ignoreCreateTableNameFunc bool) {
-	if err := genTableNameFunc(model, pkgName, ignoreCreateTableNameFunc); err != nil {
+func (model *Model) Output(ignoreCreateTableNameFunc bool) {
+	if err := genTableNameFunc(model, ignoreCreateTableNameFunc); err != nil {
 		fmt.Printf("%s\n", err.Error())
 		os.Exit(1)
 	}

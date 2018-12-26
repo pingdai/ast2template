@@ -1,7 +1,7 @@
 package processrx
 
 import (
-	"my_github/ast2template/codegen"
+	"ast2template/codegen"
 	"strings"
 )
 

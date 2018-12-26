@@ -220,11 +220,11 @@ type TableNameTemplateParam struct {
 	TableNameStr            string
 }
 
-func genTableNameFunc(model *Model, pkgName string, ignoreCreateTableNameFunc bool) error {
+func genTableNameFunc(model *Model, ignoreCreateTableNameFunc bool) error {
 	data := TableNameTemplateParam{
 		StructName:              model.Name,
 		ReceiverName:            fetchUpLetter(model.Name),
-		PackageName:             pkgName,
+		PackageName:             model.Pkg.Name(),
 		HasEnabledField:         model.HasEnabledField,
 		HasCreateTimeField:      model.HasCreateTimeField,
 		HasUpdateTimeField:      model.HasUpdateTimeField,
@@ -248,12 +248,7 @@ import (
     {{if eq .UpdateTimeFieldType "time.Time"}}
     "time.Time"{{else if eq .CreateTimeFieldType "time.Time"}}
     "time.Time"{{end}}
-    "git.chinawayltd.com/golib/tools/mysql/dberr"
     "github.com/jinzhu/gorm"
-    "github.com/go-sql-driver/mysql"
-    "github.com/sirupsen/logrus"
-    "git.chinawayltd.com/golib/tools/courier/enumeration"
-    "git.chinawayltd.com/golib/tools/httplib"
 ) 
 
 type {{.StructName}}List []{{.StructName}}
@@ -287,8 +282,6 @@ func ({{.ReceiverName}} *{{.StructName}}) Create(db *gorm.DB) error {
         {{.ReceiverName}}.CreateTime = time.Now().Unix() 
     }{{else if eq .CreateTimeFieldType "time.Time"}}if {{.ReceiverName}}.CreateTime.IsZero() {
         {{.ReceiverName}}.CreateTime = time.Now()
-    }{{else if eq .CreateTimeFieldType "timelib.MySQLTimestamp"}} if time.Time({{.ReceiverName}}.CreateTime).IsZero() {
-        {{.ReceiverName}}.CreateTime = timelib.MySQLTimestamp(time.Now()) 
     }{{end}}
     {{end}}
     {{if .HasUpdateTimeField}} 
@@ -296,26 +289,13 @@ func ({{.ReceiverName}} *{{.StructName}}) Create(db *gorm.DB) error {
         {{.ReceiverName}}.UpdateTime = time.Now().Unix() 
     }{{else if eq .UpdateTimeFieldType "time.Time"}}if {{.ReceiverName}}.UpdateTime.IsZero() {
         {{.ReceiverName}}.UpdateTime = time.Now()
-    }{{else if eq .UpdateTimeFieldType "timelib.MySQLTimestamp"}} if time.Time({{.ReceiverName}}.UpdateTime).IsZero() {
-        {{.ReceiverName}}.UpdateTime = timelib.MySQLTimestamp(time.Now()) 
     }{{end}}
     {{end}}
     {{if .HasEnabledField}} 
-    {{.ReceiverName}}.Enabled = {{.EnabledFieldType}}(enumeration.BOOL__TRUE){{end}}
+    {{.ReceiverName}}.Enabled = {{.EnabledFieldType}}(1){{end}}
     err := db.Table({{.ReceiverName}}.TableName()).Create({{.ReceiverName}}).Error
-    if err != nil {
-        if mysql_err, ok := err.(*mysql.MySQLError); !ok {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordCreateFailedError
-        } else if mysql_err.Number != dberr.DuplicateEntryErrNumber {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordCreateFailedError
-        } else {
-            return dberr.RecordConflictError
-        }
-    } else {
-        return nil
-    }
+    
+	return err
 }
 `
 
@@ -346,10 +326,10 @@ var FetchListTemplate = `
 func ({{.ReceiverListName}} *{{.StructListName}}) FetchList(db *gorm.DB, size, offset int32, query ...map[string]interface{}) (int32, error) {
     var count int32{{if .HasEnabledField}} 
     if len(query) == 0 {
-        query = append(query, map[string]interface{}{"{{.DbEnabledField}}": enumeration.BOOL__TRUE})
+        query = append(query, map[string]interface{}{"{{.DbEnabledField}}": 1})
     } else {
         if _, ok := query[0]["{{.DbEnabledField}}"]; !ok { 
-            query[0]["{{.DbEnabledField}}"] = enumeration.BOOL__TRUE 
+            query[0]["{{.DbEnabledField}}"] = 1 
         }
     }
 
@@ -371,13 +351,9 @@ func ({{.ReceiverListName}} *{{.StructListName}}) FetchList(db *gorm.DB, size, o
         {{if .HasCreateTimeField}}err = db.Table({{.StructName}}{}.TableName()).Count(&count).Limit(size).Offset(offset).Order("{{.DbCreateTimeField}} desc").Find({{.ReceiverListName}}).Error{{else}}err = db.Table({{.StructName}}{}.TableName()).Count(&count).Limit(size).Offset(offset).Find({{.ReceiverListName}}).Error{{end}}
     } else {
         {{if .HasCreateTimeField}}err = db.Table({{.StructName}}{}.TableName()).Where(query[0]).Count(&count).Limit(size).Offset(offset).Order("{{.DbCreateTimeField}} desc").Find({{.ReceiverListName}}).Error{{else}}err = db.Table({{.StructName}}{}.TableName()).Where(query[0]).Count(&count).Limit(size).Offset(offset).Find({{.ReceiverListName}}).Error{{end}}
-    }{{end}} 
-    if err != nil {
-        logrus.Errorf("%s", err.Error())
-        return 0, dberr.RecordFetchFailedError
-    } else {
-        return int32(count), nil
-    }
+    }{{end}}
+
+	return int32(count),err
 }
 `
 
@@ -419,14 +395,10 @@ func ({{.ReceiverListName}} *{{.StructListName}}) BatchFetchBy{{.Field}}List(db 
         return nil
     }
 
-    {{if .HasEnabledField}}err := db.Table({{.StructName}}{}.TableName()).Where("{{.DbField}} in (?) and {{.DbEnabledField}} = ?", {{.ParamField}}List, enumeration.BOOL__TRUE).Find({{.ReceiverListName}}).Error{{else}}
+    {{if .HasEnabledField}}err := db.Table({{.StructName}}{}.TableName()).Where("{{.DbField}} in (?) and {{.DbEnabledField}} = ?", {{.ParamField}}List, 1).Find({{.ReceiverListName}}).Error{{else}}
     err := db.Table({{.StructName}}{}.TableName()).Where("{{.DbField}} in (?)", {{.ParamField}}List).Find({{.ReceiverListName}}).Error{{end}}
-    if err != nil {
-        logrus.Errorf("%s", err.Error())
-        return dberr.RecordFetchFailedError
-    } else {
-        return nil
-    }
+    
+	return err
 }
 `
 
@@ -448,14 +420,10 @@ func genFetchFuncByNormalIndex(model *Model, baseInfoGenCode *BaseInfoOfGenCode)
 
 var FetchTemplate = `
 func ({{.ReceiverListName}} *{{.StructListName}}) FetchBy{{.PartFuncName}}({{.FuncInputParam}}) error {
-	{{if .HasEnabledField}}err := db.Table({{.StructName}}{}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Find({{.ReceiverListName}}).Error{{else}} 
+	{{if .HasEnabledField}}err := db.Table({{.StructName}}{}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Find({{.ReceiverListName}}).Error{{else}} 
     err := db.Table({{.StructName}}{}.TableName()).Where("{{.OrmQueryFormat}}", {{.OrmQueryParam}}).Find({{.ReceiverListName}}).Error{{end}}
-    if err == nil {
-        return nil
-    } else {
-        logrus.Errorf("%s", err.Error())
-        return dberr.RecordFetchFailedError
-    } 
+
+	return err
 }
 `
 
@@ -489,31 +457,19 @@ func ({{.ReceiverName}} *{{.StructName}}) UpdateBy{{.PartFuncName}}WithStruct({{
         {{.ReceiverName}}.UpdateTime = time.Now().Unix() 
     }{{else if eq .UpdateTimeFieldType "time.Time"}}if {{.ReceiverName}}.UpdateTime.IsZero() {
         {{.ReceiverName}}.UpdateTime = time.Now()
-    }{{else if eq .UpdateTimeFieldType "timelib.MySQLTimestamp"}} if time.Time({{.ReceiverName}}.UpdateTime).IsZero() {
-        {{.ReceiverName}}.UpdateTime = timelib.MySQLTimestamp(time.Now()) 
     }{{end}}
     {{end}}
-    {{if .HasEnabledField}}dbRet := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Updates({{.ReceiverName}}){{else}} 
+    {{if .HasEnabledField}}dbRet := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Updates({{.ReceiverName}}){{else}} 
     dbRet := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}}", {{.OrmQueryParam}}).Updates({{.ReceiverName}}){{end}}
     err := dbRet.Error
     if err != nil {
-        if mysql_err, ok := err.(*mysql.MySQLError); !ok {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordUpdateFailedError 
-        } else if mysql_err.Number != dberr.DuplicateEntryErrNumber {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordUpdateFailedError
-        } else {
-            return dberr.RecordConflictError
-        }
+		return err
     } else {
         if dbRet.RowsAffected == 0 {
-            {{if .HasEnabledField}}findErr := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Find(&{{.StructName}}{}).Error{{else}}
+            {{if .HasEnabledField}}findErr := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Find(&{{.StructName}}{}).Error{{else}}
             findErr := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}}", {{.OrmQueryParam}}).Find(&{{.StructName}}{}).Error{{end}}
-            if findErr == gorm.ErrRecordNotFound {
-                return dberr.RecordNotFoundError
-            } else if findErr != nil {
-                return dberr.RecordUpdateFailedError
+             if findErr != nil {
+                return findErr
             }
             //存在有效数据记录，返回成功
             return nil
@@ -552,30 +508,19 @@ func ({{.ReceiverName}} *{{.StructName}}) UpdateBy{{.PartFuncName}}WithMap({{.Fu
     {{if .HasUpdateTimeField}}if _, ok := updateMap["{{.DbUpdateTimeField}}"]; !ok { 
         {{if eq .UpdateTimeFieldType "int32" "int64" "uint32" "uint64"}}updateMap["{{.DbUpdateTimeField}}"] = time.Now().Unix()
         {{else if eq .UpdateTimeFieldType "time.Time"}}updateMap["{{.DbUpdateTimeField}}"] = time.Now()
-        {{else if eq .UpdateTimeFieldType "timelib.MySQLTimestamp"}}updateMap["{{.DbUpdateTimeField}}"] = timelib.MySQLTimestamp(time.Now())
         {{end}}
     }{{end}}
-    {{if .HasEnabledField}}dbRet := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Updates(updateMap){{else}} 
+    {{if .HasEnabledField}}dbRet := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Updates(updateMap){{else}} 
     dbRet := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}}", {{.OrmQueryParam}}).Updates(updateMap){{end}}
     err := dbRet.Error
     if err != nil {
-        if mysql_err, ok := err.(*mysql.MySQLError); !ok {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordUpdateFailedError 
-        } else if mysql_err.Number != dberr.DuplicateEntryErrNumber {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordUpdateFailedError
-        } else {
-            return dberr.RecordConflictError
-        }
+        return err
     } else {
         if dbRet.RowsAffected == 0 {
-            {{if .HasEnabledField}}findErr := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Find(&{{.StructName}}{}).Error{{else}}
+            {{if .HasEnabledField}}findErr := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Find(&{{.StructName}}{}).Error{{else}}
             findErr := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}}", {{.OrmQueryParam}}).Find(&{{.StructName}}{}).Error{{end}}
-            if findErr == gorm.ErrRecordNotFound {
-                return dberr.RecordNotFoundError
-            } else if findErr != nil {
-                return dberr.RecordUpdateFailedError
+            if findErr != nil {
+                return findErr
             }
             //存在有效数据记录，返回成功
             return nil
@@ -612,39 +557,17 @@ func genSoftDeleteFuncByUniqueIndex(model *Model, baseInfoGenCode *BaseInfoOfGen
 var genSoftDeleteFuncByUniqueIndexTemplate = `
 func ({{.ReceiverName}} *{{.StructName}}) SoftDeleteBy{{.PartFuncName}}({{.FuncInputParam}}) error {
     {{if .HasEnabledField}}var updateMap = map[string]interface{}{}
-    updateMap["{{.DbEnabledField}}"] = enumeration.BOOL__FALSE
+    updateMap["{{.DbEnabledField}}"] = 2
     {{if .HasUpdateTimeField}}
     {{if eq .UpdateTimeFieldType "int32" "int64" "uint32" "uint64"}}if {{.ReceiverName}}.UpdateTime == 0 { 
         {{.ReceiverName}}.UpdateTime = time.Now().Unix() 
     }{{else if eq .UpdateTimeFieldType "time.Time"}}if {{.ReceiverName}}.UpdateTime.IsZero() {
         {{.ReceiverName}}.UpdateTime = time.Now()
-    }{{else if eq .UpdateTimeFieldType "timelib.MySQLTimestamp"}} if time.Time({{.ReceiverName}}.UpdateTime).IsZero() {
-        {{.ReceiverName}}.UpdateTime = timelib.MySQLTimestamp(time.Now()) 
     }{{end}}
     {{end}}
-    err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Updates(updateMap).Error
-    if err != nil {
-        if mysql_err, ok := err.(*mysql.MySQLError); !ok {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordDeleteFailedError
-        } else if mysql_err.Number != dberr.DuplicateEntryErrNumber {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordDeleteFailedError
-        } else {
-            logrus.Warningf("%s", err.Error())
-            // 物理删除被软删除的数据
-            delErr := db.Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Delete(&{{.StructName}}{}).Error
-            if delErr != nil {
-                logrus.Errorf("%s", delErr.Error())
-                return dberr.RecordDeleteFailedError
-            } 
-
-            return nil
-        }
-    } else {
-        return nil
-    }{{else}}
-    return nil{{end}}
+    err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Updates(updateMap).Error
+    
+	return err{{end}}
 }
 `
 
@@ -670,14 +593,10 @@ func genPhysicsDeleteFuncByUniqueIndex(model *Model, baseInfoGenCode *BaseInfoOf
 
 var genPhysicsDeleteFuncByUniqueIndexTemplate = `
 func ({{.ReceiverName}} *{{.StructName}}) DeleteBy{{.PartFuncName}}({{.FuncInputParam}}) error {
-    {{if .HasEnabledField}}err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Delete({{.ReceiverName}}).Error{{else}}
+    {{if .HasEnabledField}}err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Delete({{.ReceiverName}}).Error{{else}}
     err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}}", {{.OrmQueryParam}}).Delete({{.ReceiverName}}).Error{{end}}
-    if err != nil {
-        logrus.Errorf("%s", err.Error())
-        return dberr.RecordDeleteFailedError
-    } else {
-        return nil
-    }
+    
+	return err
 }
 `
 
@@ -704,18 +623,10 @@ func genFetchForUpdateFuncByUniqueIndex(model *Model, baseInfoGenCode *BaseInfoO
 
 var genFetchForUpdateFuncByUniqueIndeTemplate = `
 func ({{.ReceiverName}} *{{.StructName}}) FetchBy{{.PartFuncName}}ForUpdate({{.FuncInputParam}}) error {
-    {{if .HasEnabledField}}err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Set("gorm:query_option", "FOR UPDATE").Find({{.ReceiverName}}).Error{{else}} 
+    {{if .HasEnabledField}}err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Set("gorm:query_option", "FOR UPDATE").Find({{.ReceiverName}}).Error{{else}} 
     err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}}", {{.OrmQueryParam}}).Set("gorm:query_option", "FOR UPDATE").Find({{.ReceiverName}}).Error{{end}}
-    if err == nil {
-        return nil
-    } else {
-        if err == gorm.ErrRecordNotFound {
-            return dberr.RecordNotFoundError
-        } else {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordFetchFailedError
-        }
-    } 
+    
+	return err
 }
 `
 
@@ -736,17 +647,9 @@ func genFetchFuncByUniqueIndex(model *Model, baseInfoGenCode *BaseInfoOfGenCode)
 
 var FetchByUniqueInexTemplate = `
 func ({{.ReceiverName}} *{{.StructName}}) FetchBy{{.PartFuncName}}({{.FuncInputParam}}) error {
-    {{if .HasEnabledField}}err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, enumeration.BOOL__TRUE).Find({{.ReceiverName}}).Error{{else}} 
+    {{if .HasEnabledField}}err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}} and {{.DbEnabledField}} = ?", {{.OrmQueryParam}}, 1).Find({{.ReceiverName}}).Error{{else}} 
     err := db.Table({{.ReceiverName}}.TableName()).Where("{{.OrmQueryFormat}}", {{.OrmQueryParam}}).Find({{.ReceiverName}}).Error{{end}}
-    if err == nil {
-        return nil
-    } else {
-        if err == gorm.ErrRecordNotFound {
-            return dberr.RecordNotFoundError
-        } else {
-            logrus.Errorf("%s", err.Error())
-            return dberr.RecordFetchFailedError
-        }
-    } 
+    
+	return err
 }
 `
